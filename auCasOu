@@ -1,0 +1,28 @@
+#!/bin/bash
+
+if [ ! -d ../sauvegarde ]
+then
+	mkdir ../sauvegarde
+fi
+
+if [ ! -f ../sauvegarde/.version ]
+then
+	touch ../sauvegarde/.version
+	echo 0 > ../sauvegarde/.version
+	echo "Création du fichier de version"
+	echo " "
+fi
+
+
+version=$(< ../sauvegarde/.version)
+echo "Version courante : _-$version-_"
+
+version=`expr $version + 1`
+
+archive_path="../sauvegarde/sav_"$version"_$(date +%Y%m%d%H%M%S).tar.bz2"
+
+tar cvzf $archive_path *
+
+rm ../sauvegarde/.version
+touch ../sauvegarde/.version
+echo $version >> ../sauvegarde/.version
