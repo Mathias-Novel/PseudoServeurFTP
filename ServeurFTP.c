@@ -1,7 +1,5 @@
-#include "ServeurFTP.h"
 #include "ConstanteFTP.h"
-
-#include <dirent.h>
+#include "ServeurFTP.h"
 
 pid_t pids[NBPROC];
 pid_t pidPere;
@@ -18,12 +16,6 @@ void handlerSigInt(int sig) {
         }
     }
     exit(0);
-}
-
-size_t getTailleFichier(char * filename) {
-  struct stat fichierStat;
-  stat(filename, &fichierStat);
-  return  fichierStat.st_size;
 }
 
 int commandeGet(int connfd, rio_t rio) {
@@ -204,6 +196,176 @@ int commandeCd(int connfd, rio_t rio) {
   return 1;
 }
 
+int suprimeRec(char * dossier, int cran) {
+  DIR * repertoireCourant;
+  struct dirent * rep;
+  char path[1024];
+
+  //Ameliore l'affichage
+  for(int i = 0; i < cran; i++) {
+    printf("\t");
+  }
+  printf("Tentative ouverture |%s|\n",dossier);
+  repertoireCourant = opendir(dossier);
+
+
+  //Si il n'y a pas eu de probleme durant l'ouverture
+  if (repertoireCourant)  {
+    while ((rep = readdir(repertoireCourant)) != NULL)    {
+      snprintf(path, 1024, "%s/%s",dossier,rep->d_name);
+      //Ameliore l'affichage
+      for(int i = 0; i < cran + 1; i++) {
+        printf("\t");
+      }
+      printf("objet courant |%s|",path);
+
+      //On supprime le repertoire ou fichier
+      if(rep->d_type == DT_DIR) {
+          //Si ce n'est pas le repertoire . ou ..
+          if (strcmp(rep->d_name,"..") != 0 && strcmp(rep->d_name,".") != 0 ) {
+            printf(" - Parcours\n");
+            if(!suprimeRec(path,cran+1)) {
+              return 0;
+            }
+          } else {
+            printf(" - Ignore\n");
+          }
+
+      } else {
+        printf(" - Supression\n");
+        //A decommenter si certain du fonctionnement
+        /*if (remove(path) == -1) {
+          return 0;
+        }*/
+      }
+
+    }
+    closedir(repertoireCourant);
+    //A decommenter si certain du fonctionnement
+    /*if (remove(dossier) == -1) {
+      return 0;
+    }*/
+
+    //Ameliore l'affichage
+    for(int i = 0; i < cran; i++) {
+      printf("\t");
+    }
+    printf("%s - Supression\n",dossier);
+    return 1;
+
+  } else {
+    //Ameliore l'affichage
+    for(int i = 0; i < cran; i++) {
+      printf("\t");
+    }
+    printf("Pas repertoire courant %s\n",dossier);
+    return 0;
+  }
+
+}
+
+int commandeRm(int connfd, rio_t rio, int dossier) {
+  char destination[BUFFER_SIZE];
+  char buf[BUFFER_SIZE];
+
+  //Recuperation de l' argument
+  Rio_readnb(&rio, destination, MAX_NAME_LEN);
+  printf("with arg(s) : _%s_\n", destination);
+
+  //Si c'est rm -r
+  //Pas implanter
+  if (dossier) {
+    if (suprimeRec(destination,0) != 1) {
+      printf("dossier non suprimer\n");
+      Rio_writen(connfd, NACK, BUFFER_SIZE);
+    } else {
+      Rio_writen(connfd, ACK, BUFFER_SIZE);
+    }
+    return 1;
+  }
+
+  //Si c'est rm
+  if (remove(destination) == -1) {
+    printf("Fichier non suprimer\n");
+    Rio_writen(connfd, NACK, BUFFER_SIZE);
+  } else {
+    Rio_writen(connfd, ACK, BUFFER_SIZE);
+  }
+
+
+  return 1;
+}
+
+int commandeMkdir(int connfd, rio_t rio) {
+  char dirName[MAX_NAME_LEN];
+  size_t n;
+  char * filename;
+
+  //Recuperation du nom de dossier
+  Rio_readnb(&rio, dirName, MAX_NAME_LEN);
+  printf("with arg(s) : _%s_\n", dirName);
+
+  //Creation du dossier
+  if (mkdir(dirName,0777) == -1) {
+    Rio_writen(connfd, NACK, BUFFER_SIZE);
+  } else {
+    Rio_writen(connfd, ACK, BUFFER_SIZE);
+  }
+
+  return 1;
+}
+
+int commandePut(int connfd, rio_t rio) {
+  char buf[MAXLINE];
+  char filename[MAXLINE];
+  int n, fichierTaille, tailleRestante;
+  clock_t debut, fin, tempsTotal;
+
+  //On recupere le nom du fichier
+  Rio_readnb(&rio, filename, BUFFER_SIZE);
+  printf("with arg(s) : _%s_\n", buf);
+
+  //On recupere la taille du fichier
+  Rio_readnb(&rio, buf, BUFFER_SIZE);
+
+
+  //Si le fichier existe
+  if ((fichierTaille = atoi(buf)) >= 0) {
+
+    //Ouverture du fichier de sorite
+    FILE * sortie = fopen("sortieServeur","w+");
+    printf("Fichier cree\n");
+
+    tailleRestante = fichierTaille;
+    debut = clock();
+    //Lecture de la reponse
+    while((n = Rio_readnb(&rio, buf, BUFFER_SIZE)) > 0 && tailleRestante - n > 0) {
+      Fputs(buf, sortie);
+      tailleRestante-= n;
+    }
+    //Ecriture d'une partie du dernier paquet recupere
+    for (int i = 0; i < tailleRestante; i++) {
+      fputc(buf[i],sortie);
+    }
+    fin = clock();
+
+    tempsTotal = fin - debut;
+    if (tempsTotal/1000 == 0) {
+      printf("le fichier %s de %d octet(s) a ete telecharge en %d seconde(s) (%d octet(s)/seconde)\n\n",filename, fichierTaille, 1, fichierTaille);
+    } else {
+      printf("le fichier %s de %d octet(s) a ete telecharge en %ld seconde(s) (%ld ko/seconde)\n\n",filename, fichierTaille, tempsTotal / 1000000, (fichierTaille/(tempsTotal/1000)));
+    }
+
+    //Fermeture du fichier
+    fclose(sortie);
+  } else {
+    printf("Ce fichier n'existe pas\n");
+  }
+
+  return 1;
+}
+
+
 int traiteConnection(int connfd, rio_t rio) {
     char commande[MAX_NAME_LEN];
     char arg[MAX_NAME_LEN];
@@ -229,6 +391,22 @@ int traiteConnection(int connfd, rio_t rio) {
     } else if (strcmp(commande,COMMANDE_CD) == 0) {
       printf("Commande cd\n");
       return commandeCd(connfd, rio);
+
+    //Commande rm -r
+  } else if (strcmp(commande,COMMANDE_RM_R) == 0) {
+    return commandeRm(connfd, rio, 1);
+
+    //Commande rm
+    } else if (strcmp(commande,COMMANDE_RM) == 0) {
+    return commandeRm(connfd, rio, 0);
+
+    //Commande mkdir
+  } else if (strcmp(commande,COMMANDE_MKDIR) == 0) {
+    return commandeMkdir(connfd, rio);
+
+    //Commande put
+  } else if (strcmp(commande,COMMANDE_PUT) == 0) {
+    return commandePut(connfd, rio);
 
     //Commande bye
     } else if(strcmp(commande,COMMANDE_BYE) == 0) {

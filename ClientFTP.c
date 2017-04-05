@@ -1,11 +1,7 @@
 /*
  * ClientFTP.c
  */
-#include "csapp.h"
-#include "readcmd.h"
-#include "ConstanteFTP.h"
-
-#include <time.h>
+ #include "ConstanteFTP.h"
 
 int clientGlob;
 
@@ -172,6 +168,123 @@ void commandeCd(int clientfd, rio_t rio, char * destination) {
   }
 }
 
+void commandeRmR(int clientfd, rio_t rio, char * dirName) {
+  char buf[BUFFER_SIZE];
+
+  //Verification du nom
+  if (dirName == NULL) {
+    printf("usage rm -r <nom du repertoire>\n");
+    return;
+  }
+
+  //Envoie de la commande au serveur
+  Rio_writen(clientfd, COMMANDE_RM_R, BUFFER_SIZE);
+
+  //Envoie du nom du repertoire
+  Rio_writen(clientfd, dirName, BUFFER_SIZE);
+
+  //Reception de la reponse
+  Rio_readnb(&rio, buf, BUFFER_SIZE);
+  if (strcmp(buf,ACK) != 0) {
+    printf("Operation non accomplie\n");
+  } else {
+    printf("Operation reussie\n");
+  }
+
+}
+
+void commandeRm(int clientfd, rio_t rio, char * filename) {
+  char buf[BUFFER_SIZE];
+
+  //Verification du nom
+  if (filename == NULL) {
+    printf("usage rm <nom du fichier>\n");
+    return;
+  }
+
+  //Envoie de la commande au serveur
+  Rio_writen(clientfd, COMMANDE_RM, BUFFER_SIZE);
+
+  //Envoie du nom du fichier
+  Rio_writen(clientfd, filename, BUFFER_SIZE);
+
+  //Reception de la reponse
+  Rio_readnb(&rio, buf, BUFFER_SIZE);
+  if (strcmp(buf,ACK) != 0) {
+    printf("Operation non accomplie\n");
+  } else {
+    printf("Operation reussie\n");
+  }
+}
+
+void commandeMkdir(int clientfd, rio_t rio, char * dirName) {
+  char buf[BUFFER_SIZE];
+
+  //Verification du nom
+  if (dirName == NULL) {
+    printf("usage mkdir <nom du repertoire>\n");
+    return;
+  }
+
+  //Envoie de la commande au serveur
+  Rio_writen(clientfd, COMMANDE_MKDIR, BUFFER_SIZE);
+
+  //Envoie du nom du fichier
+  Rio_writen(clientfd, dirName, BUFFER_SIZE);
+
+  //Reception de la reponse
+  Rio_readnb(&rio, buf, BUFFER_SIZE);
+  if (strcmp(buf,ACK) != 0) {
+    printf("Operation non accomplie\n");
+  } else {
+    printf("Operation reussie\n");
+  }
+}
+
+void commandePut(int clientfd, rio_t rio, char * filename) {
+  char buf[BUFFER_SIZE];
+  int n;
+
+  //Verification du nom
+  if (filename == NULL) {
+    printf("usage rm <nom du fichier>\n");
+    return;
+  }
+
+  //Envoie de la commande au serveur
+  Rio_writen(clientfd, COMMANDE_PUT, BUFFER_SIZE);
+
+  //Envoie du nom du fichier
+  Rio_writen(clientfd, filename, BUFFER_SIZE);
+
+  //Ouverture du fichier
+  FILE * fichier = fopen(filename, "r");
+
+  printf("Ouverture du fichier\n");
+  //Envoie de la taille du fichier, -1 si le fichier n'existe pas
+  if (fichier == NULL) {
+    printf("Fichier inexistant\n");
+    strcpy(buf,"-1");
+    Rio_writen(clientfd, buf, BUFFER_SIZE);
+    return 1;
+  } else {
+    sprintf(buf, "%d",(int) getTailleFichier(filename));
+    Rio_writen(clientfd, buf, BUFFER_SIZE);
+  }
+
+  printf("Debut de l'envoie du fichier\n");
+  //Ecriture du fichier
+  int octets = 0;
+  while ( (n = fread(buf, 1, BUFFER_SIZE, fichier)) > 0) {
+      octets+=n;
+      Rio_writen(clientfd, buf, BUFFER_SIZE);
+  }
+
+  printf("Fichier %s correctement envoye (%d octets envoyes)\n", filename, octets);
+
+  fclose(fichier);
+}
+
 int main(int argc, char **argv)
 {
     int clientfd;
@@ -235,6 +348,22 @@ int main(int argc, char **argv)
           //Commande cd
         } else if (strcmp("cd", l->seq[0][0]) == 0) {
           commandeCd(clientfd, rio, l->seq[0][1]);
+
+          //Commande rm
+        } else if (strcmp("rm", l->seq[0][0]) == 0) {
+          if (l->seq[0][1] != NULL && strcmp("-r", l->seq[0][1]) == 0) {
+            commandeRmR(clientfd, rio, l->seq[0][2]);
+          } else {
+            commandeRm(clientfd, rio, l->seq[0][1]);
+          }
+
+          //Commande mkdir
+        } else if (strcmp("mkdir", l->seq[0][0]) == 0) {
+          commandeMkdir(clientfd, rio, l->seq[0][1]);
+
+          //Commande put
+        } else if (strcmp("put", l->seq[0][0]) == 0) {
+          commandePut(clientfd, rio, l->seq[0][1]);
 
           //Commande bye
         } else if (strcmp("bye" , l->seq[0][0]) == 0) {
