@@ -2,6 +2,8 @@
 
 size_t getTailleFichier(char * filename) {
   struct stat fichierStat;
-  stat(filename, &fichierStat);
+  if (stat(filename, &fichierStat) == -1) {
+    return -1;
+  }
   return  fichierStat.st_size;
 }

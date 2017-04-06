@@ -16,8 +16,6 @@ void lire(char * dest, int taille, FILE * stream) {
   if ( (retourChariot = strchr(dest,'\n')) != NULL) {
     *retourChariot = '\0';
   }
-
-  //free(retourChariot);
 }
 
 int authentification(rio_t rio, int clientfd) {
@@ -65,7 +63,7 @@ void commandeGet(int clientfd, rio_t rio, char * filename) {
       printf("usage get <filename>\n");
   } else {
     char buf[MAXLINE];
-    int n, fichierTaille, tailleRestante;
+    int n, fichierTaille, tailleFichierExistant, tailleRestante;
     clock_t debut, fin, tempsTotal;
 
     //On envoie la commande
@@ -80,13 +78,27 @@ void commandeGet(int clientfd, rio_t rio, char * filename) {
     //Si le fichier existe
     if ((fichierTaille = atoi(buf)) >= 0) {
 
-      //Ouverture du fichier de sorite
-      FILE * sortie = fopen("sortieClient","w+");
+      //On envoie la taille du fichier, -1 si il n'existe pas
+      tailleFichierExistant = getTailleFichier("sortieClient");
+      printf("taille sortieClient %d\n",tailleFichierExistant);
+      if (tailleFichierExistant == -1) {
+        tailleFichierExistant = 0;
+        printf("Nouveau fichier\n");
+      } else {
+        printf("Reprise apres panne, delta : %d\n",fichierTaille-tailleFichierExistant);
+      }
+      sprintf(buf,"%d",tailleFichierExistant);
+      printf("Envoie de offset %s\n",buf);
+      Rio_writen(clientfd, buf, MAX_NAME_LEN);
 
-      tailleRestante = fichierTaille;
+      //Ouverture du fichier de sorite
+      FILE * sortie = fopen("sortieClient","w");
+      fseek(sortie,tailleFichierExistant, SEEK_SET);
+
+      tailleRestante = fichierTaille - tailleFichierExistant;
       debut = clock();
       //Lecture de la reponse
-      while((n = Rio_readnb(&rio, buf, BUFFER_SIZE)) > 0 && tailleRestante - n > 0) {
+      while(tailleRestante > 0 && (n = Rio_readnb(&rio, buf, BUFFER_SIZE)) > 0) {
         Fputs(buf, sortie);
         tailleRestante-= n;
       }
@@ -96,6 +108,7 @@ void commandeGet(int clientfd, rio_t rio, char * filename) {
       }
       fin = clock();
 
+      //Calcul de la vitesse de telechargement
       tempsTotal = fin - debut;
       if (tempsTotal/1000 == 0) {
         printf("le fichier %s de %d octet(s) a ete telecharge en %d seconde(s) (%d octet(s)/seconde)\n\n",filename, fichierTaille, 1, fichierTaille);
@@ -285,8 +298,7 @@ void commandePut(int clientfd, rio_t rio, char * filename) {
   fclose(fichier);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     int clientfd;
     char *host;
     rio_t rio;

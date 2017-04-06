@@ -24,6 +24,7 @@ int commandeGet(int connfd, rio_t rio) {
   char buf[MAX_NAME_LEN];
   size_t n;
   char * filename;
+  long int offset;
 
   //Recuperation de(s) argument(s) (nottament le nom du fichier)
   Rio_readnb(&rio, buf, MAX_NAME_LEN);
@@ -46,6 +47,17 @@ int commandeGet(int connfd, rio_t rio) {
     sprintf(buf, "%d",(int) getTailleFichier(filename));
     Rio_writen(connfd, buf, BUFFER_SIZE);
   }
+
+  //On recoit la taille du fichier deja present chez le client
+  //Si il n'existe pas alors o recoit -1 et on commence a envoyer des le debut du fichier
+  //Sinon on envoie que la partie manquante
+  Rio_readnb(&rio, buf, MAX_NAME_LEN);
+  if ((offset = atoi(buf)) == -1) {
+    offset = 0;
+  } else {
+    printf("Reprise après panne avec l'offset %d\n",offset);
+  }
+  fseek(fichier, offset, SEEK_SET);
 
   printf("Debut de l'envoie du fichier\n");
   //Ecriture du fichier
@@ -364,7 +376,6 @@ int commandePut(int connfd, rio_t rio) {
 
   return 1;
 }
-
 
 int traiteConnection(int connfd, rio_t rio) {
     char commande[MAX_NAME_LEN];
