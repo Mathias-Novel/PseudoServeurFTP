@@ -352,7 +352,7 @@ int commandePut(int connfd, rio_t rio) {
     debut = clock();
     //Lecture de la reponse
     while((n = Rio_readnb(&rio, buf, BUFFER_SIZE)) > 0 && tailleRestante - n > 0) {
-      Fputs(buf, sortie);
+      fwrite(buf, n, 1, sortie);
       tailleRestante-= n;
     }
     //Ecriture d'une partie du dernier paquet recupere

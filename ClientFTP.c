@@ -99,7 +99,7 @@ void commandeGet(int clientfd, rio_t rio, char * filename) {
       debut = clock();
       //Lecture de la reponse
       while(tailleRestante > 0 && (n = Rio_readnb(&rio, buf, BUFFER_SIZE)) > 0) {
-        Fputs(buf, sortie);
+        fwrite(buf, n, 1, sortie);
         tailleRestante-= n;
       }
       //Ecriture d'une partie du dernier paquet recupere
@@ -393,8 +393,6 @@ int main(int argc, char **argv) {
 
         }
     }
-
-    printf("JE SORT DE LA BOUCLE\n");
 
     //Fermeture du client
     Close(clientfd);
